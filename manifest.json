@@ -1,0 +1,17 @@
+{
+  "name": "Taxa de Conversão",
+  "short_name": "Taxa",
+  "description": "Registre abordagens e vendas, acompanhe sua taxa de conversão e meta do dia.",
+  "lang": "pt-BR",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#faf3f5",
+  "theme_color": "#faf3f5",
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}
