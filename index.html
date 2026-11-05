@@ -138,6 +138,11 @@ input.txt,select.txt{width:100%;height:52px;border-radius:14px;border:1px solid 
 .item .rt b{color:var(--pink);font-size:16px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
 .item .sub{flex:1 0 100%;display:flex;gap:6px 16px;flex-wrap:wrap;font-size:13.5px;color:var(--muted)}
 .item .sub b{color:var(--text);font-weight:600}
+/* seletor de período */
+.chips{display:flex;gap:8px;margin:-4px 0 14px}
+.chip{flex:1;height:40px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--muted);font-family:inherit;font-size:14.5px}
+.chip.on{background:color-mix(in srgb,var(--pink) 14%,var(--card));border-color:var(--pink-soft);color:var(--pink);font-weight:600}
+.calh button:disabled{opacity:.35}
 /* modal */
 dialog{border:1px solid var(--line);border-radius:22px;background:var(--bg);color:var(--text);width:min(92vw,420px);padding:22px}
 dialog::backdrop{background:rgba(0,0,0,.45)}
@@ -245,6 +250,15 @@ dialog .acts{display:flex;gap:12px;margin-top:22px}
 
 <!-- PREVISÕES -->
 <section class="tab" id="tab-prev">
+  <div class="calh">
+    <button id="pPrev" aria-label="Mês anterior"><svg class="i" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+    <h2 id="pTitle">Todo o período</h2>
+    <button id="pNext" aria-label="Próximo mês"><svg class="i" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+  </div>
+  <div class="chips">
+    <button class="chip" id="pAll">Todo o período</button>
+    <button class="chip" id="pCur">Este mês</button>
+  </div>
   <div class="card month glow">
     <div class="lbl" style="justify-content:center" id="mLabel"></div>
     <div class="big mono" id="mSales">0</div>
@@ -645,26 +659,48 @@ function itemRows(list,fmtName,short,subFn){
     return '<div class="item"><div class="nm">'+(i===0?ICON.trophy:'')+'<span class="tx">'+fmtName(o)+'</span></div><div class="rt mono"><span>'+
     (short?o.s+'v / '+o.a+'a':o.s+' vendas / '+o.a+' abord.')+'</span><b>'+pct(o.s,o.a).toFixed(1)+'%</b></div>'+(sub?'<div class="sub">'+sub+'</div>':'')+'</div>'}).join('');
 }
+let pSel=null; // null = todo o período; ou {y,m}
+const monthKey=(y,m)=>y*12+m;
+function prevBounds(){
+  const n=new Date();let lo=monthKey(n.getFullYear(),n.getMonth()),hi=lo;
+  S.sessions.forEach(x=>{const p=x.date.split('-'),k=monthKey(+p[0],+p[1]-1);if(k<lo)lo=k;if(k>hi)hi=k});
+  return{lo:lo,hi:hi};
+}
 function renderPrev(){
-  const n=new Date(),prefix=n.getFullYear()+'-'+pad(n.getMonth()+1);
-  $('#mLabel').textContent='Vendas em '+MONTHS[n.getMonth()].toLowerCase();
-  let a=0,s=0,mw=0,mo=0;S.sessions.forEach(x=>{if(x.date.startsWith(prefix)){const q=sum(x.slots);a+=q.a;s+=q.s;mw+=x.durMs||0;mo+=outOf(x)}});
+  const n=new Date(),B=prevBounds();
+  const prefix=pSel?pSel.y+'-'+pad(pSel.m+1):null;
+  const inScope=x=>!prefix||x.date.startsWith(prefix);
+  const curSel=pSel&&pSel.y===n.getFullYear()&&pSel.m===n.getMonth();
+  $('#pTitle').textContent=pSel?MONTHS[pSel.m]+' '+pSel.y:'Todo o período';
+  $('#pAll').classList.toggle('on',!pSel);$('#pCur').classList.toggle('on',!!curSel);
+  const k=pSel?monthKey(pSel.y,pSel.m):null;
+  $('#pPrev').disabled=!pSel||k<=B.lo;$('#pNext').disabled=!pSel||k>=B.hi;
+  $('#mLabel').textContent=pSel?'Vendas em '+MONTHS[pSel.m].toLowerCase()+(pSel.y!==n.getFullYear()?' de '+pSel.y:''):'Vendas no total';
+  let a=0,s=0,mw=0,mo=0;S.sessions.forEach(x=>{if(inScope(x)){const q=sum(x.slots);a+=q.a;s+=q.s;mw+=x.durMs||0;mo+=outOf(x)}});
   $('#mWork').textContent=fmtMs(mw);$('#mOut').textContent=fmtMs(mo);
   $('#mSales').textContent=s;
   $('#mTxt').innerHTML='de '+a+' abordagens <span style="color:var(--pink)">('+pct(s,a).toFixed(1)+'%)</span>';
   const H={},W={},P={},names={};
-  allSlots().forEach(x=>{
+  allSlots().filter(inScope).forEach(x=>{
     const add=(m,k)=>{const o=m[k]||(m[k]={a:0,s:0});o.a+=x.a;o.s+=x.s};
     add(H,x.h);add(W,wday(x.date));
     const lk=(x.loc||'').trim().toLowerCase()||'__none';
     if(!names[lk])names[lk]=x.loc||'Sem local';
     add(P,lk);
   });
-  const WT={};S.sessions.forEach(x=>{const k=wday(x.date),o=WT[k]||(WT[k]={w:0,o:0});o.w+=x.durMs||0;o.o+=outOf(x)});
-  $('#pHours').innerHTML=itemRows(rank(H,5).slice(0,5),o=>'<span class="mono">'+pad(o.k)+':00 – '+pad((+o.k+1)%24)+':00</span>',false);
+  const WT={};S.sessions.filter(inScope).forEach(x=>{const k=wday(x.date),o=WT[k]||(WT[k]={w:0,o:0});o.w+=x.durMs||0;o.o+=outOf(x)});
+  $('#pHours').innerHTML=itemRows(rank(H,pSel?3:5).slice(0,5),o=>'<span class="mono">'+pad(o.k)+':00 – '+pad((+o.k+1)%24)+':00</span>',false);
   $('#pDays').innerHTML=itemRows(rank(W,1),o=>DAYS[o.k],false,o=>{const t=WT[o.k];return t?'<span>Abordagem <b>'+fmtMs(t.w)+'</b></span><span>Fora de casa <b>'+fmtMs(t.o)+'</b></span>':''});
   $('#pPlaces').innerHTML=itemRows(rank(P,1),o=>esc(names[o.k]),true);
 }
+
+function stepPrev(d){
+  if(!pSel)return;const B=prevBounds();let k=monthKey(pSel.y,pSel.m)+d;
+  if(k<B.lo||k>B.hi)return;pSel={y:Math.floor(k/12),m:k%12};renderPrev();
+}
+$('#pPrev').onclick=()=>stepPrev(-1);$('#pNext').onclick=()=>stepPrev(1);
+$('#pAll').onclick=()=>{pSel=null;renderPrev()};
+$('#pCur').onclick=()=>{const n=new Date();pSel={y:n.getFullYear(),m:n.getMonth()};renderPrev()};
 
 /* ---------- navegação ---------- */
 function showTab(t){
