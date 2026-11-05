@@ -70,17 +70,17 @@ input.txt,select.txt{width:100%;height:52px;border-radius:14px;border:1px solid 
 .timer .dot.on{background:var(--pink-soft);animation:pulse 1.6s ease-in-out infinite}
 @keyframes pulse{50%{opacity:.35}}
 .conv{text-align:center;padding:26px 16px}
-.conv .big{font-size:clamp(60px,19vw,88px);font-weight:700;color:var(--pink);line-height:1.05;margin:8px 0}
+.conv .big{font-size:clamp(50px,16vw,72px);font-weight:700;color:var(--pink);line-height:1.05;margin:8px 0}
 .conv .big small{font-size:.55em}
 .act{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
 .act button{position:relative;overflow:hidden;border:0;border-radius:26px;height:clamp(128px,38vw,170px);color:#fff;font-family:inherit;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:18px;font-weight:600;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:16px;font-weight:600;
   user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:manipulation;transition:transform .08s}
 .act button:active{transform:scale(.97)}
 #bAppr{background:var(--orange)}
 #bSale{background:var(--pink)}
-.act button .n{font-size:clamp(38px,11.5vw,50px);font-weight:700;line-height:1}
-.act button svg{width:36px;height:36px}
+.act button .n{font-size:clamp(28px,8vw,36px);font-weight:700;line-height:1}
+.act button svg{width:28px;height:28px}
 .act button .fill{position:absolute;inset:0;background:rgba(0,0,0,.28);transform:scaleY(0);transform-origin:bottom;transition:transform 0s}
 .act button.holding .fill{transform:scaleY(1);transition:transform .7s linear}
 .act button>*:not(.fill){position:relative}
@@ -105,11 +105,15 @@ input.txt,select.txt{width:100%;height:52px;border-radius:14px;border:1px solid 
 .cal .d.w .p{font-size:11px;font-weight:600;margin-top:2px;opacity:.9}
 .cal .d.today{border-color:var(--pink-soft)}
 .cal .d.sel{border-color:var(--pink);box-shadow:0 0 0 2px color-mix(in srgb,var(--pink) 30%,transparent)}
-.best{display:flex;align-items:center;gap:14px;border-color:var(--pink-soft)}
-.best svg{width:34px;height:34px;color:var(--pink)}
-.best .t{font-size:13px;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
-.best .v{font-size:21px;font-weight:700}
-.best .v span{color:var(--pink)}
+.best{display:grid;grid-template-columns:1fr 1fr;gap:0;border-color:var(--pink-soft)}
+.best-item{min-width:0}
+.best-item+.best-item{border-left:1px solid var(--line);padding-left:14px;margin-left:14px}
+.best-head{display:flex;align-items:center;gap:8px;min-height:30px}
+.best svg{width:26px;height:26px;color:var(--pink);flex:none}
+.best .t{font-size:12px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase}
+.best .v{font-size:18px;font-weight:700;margin-top:8px}
+.best .detail{font-size:13px;color:var(--muted);margin-top:2px}
+.best .detail span{color:var(--pink);font-weight:700}
 .h3{font-size:14px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:24px 0 12px;display:flex;align-items:center;gap:8px}
 .sess{padding:18px}
 .sess .top{display:flex;justify-content:space-between;align-items:baseline}
@@ -483,12 +487,18 @@ function renderHist(){
     h+='<button class="'+cls+'" data-d="'+key+'"><span>'+d+'</span>'+(o?'<span class="p">'+Math.round(pct(o.s,o.a))+'%</span>':'')+'</button>';
   }
   $('#cal').innerHTML=h;
-  // melhor dia
-  let best=null;
-  Object.keys(dm).forEach(k=>{const o=dm[k];if(o.a>0){const p=pct(o.s,o.a);if(!best||p>best.p)best={k:k,p:p}}});
-  $('#bestDay').innerHTML=ICON.trophy.replace('class="i s"','class="i"')+'<div><div class="t">Melhor dia</div><div class="v">'+(best?br(best.k)+' — <span>'+best.p.toFixed(1)+'%</span>':'—')+'</div></div>';
-  // sessões
   const prefix=vy+'-'+pad(vm+1);
+  // melhores dias do mês
+  let bestConversion=null,bestSales=null;
+  Object.keys(dm).forEach(k=>{
+    const o=dm[k];if(!k.startsWith(prefix))return;
+    if(o.a>0){const p=pct(o.s,o.a);if(!bestConversion||p>bestConversion.p)bestConversion={k:k,p:p}}
+    if(o.s>0&&(!bestSales||o.s>bestSales.s))bestSales={k:k,s:o.s};
+  });
+  $('#bestDay').innerHTML=
+    '<div class="best-item"><div class="best-head">'+ICON.trophy+'<div class="t">Melhor dia de conversão</div></div><div class="v">'+(bestConversion?br(bestConversion.k):'—')+'</div><div class="detail">'+(bestConversion?'<span>'+bestConversion.p.toFixed(1)+'%</span>':'—')+'</div></div>'+
+    '<div class="best-item"><div class="best-head">'+ICON.trend+'<div class="t">Melhor dia de vendas</div></div><div class="v">'+(bestSales?br(bestSales.k):'—')+'</div><div class="detail">'+(bestSales?'<span>'+bestSales.s+'</span> vendas':'—')+'</div></div>';
+  // sessões
   let list=S.sessions.filter(x=>selDay?x.date===selDay:x.date.startsWith(prefix));
   list.sort((a,b)=>(a.date+a.start).localeCompare(b.date+b.start));
   $('#sessTitle').textContent=selDay?'Sessões de '+br(selDay):'Sessões do mês';
