@@ -559,21 +559,71 @@ $('#exportBtn').onclick=()=>{
   document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),2000);
 };
 $('#importBtn').onclick=()=>$('#importFile').click();
+
+/* ---- importação: formato do ConvertTrack (approachTimestamps/saleTimestamps) e formato próprio ---- */
+const OPEN_GAP=90*60000; // fim registrado > 90 min depois do último toque = timer esquecido ligado
+function isCT(x){return x&&typeof x==='object'&&('approaches' in x||'approachTimestamps' in x||'saleTimestamps' in x)&&!Array.isArray(x.slots)}
+function lastEvent(x){
+  const ev=[].concat(x.approachTimestamps||[],x.saleTimestamps||[]).map(Number).filter(Number.isFinite);
+  return ev.length?Math.max.apply(null,ev):null;
+}
+function isOpenCT(x){
+  const end=Number(x.endTime),le=lastEvent(x);
+  return Number.isFinite(end)&&le!==null&&end-le>OPEN_GAP;
+}
+function fitSlots(slots,key,target,hour){
+  let diff=target-slots.reduce((t,z)=>t+z[key],0);
+  if(diff>0){let sl=slots[slots.length-1];if(!sl){sl={h:hour,loc:'',a:0,s:0};slots.push(sl)}sl[key]+=diff}
+  for(let i=slots.length-1;i>=0&&diff<0;i--){const take=Math.min(slots[i][key],-diff);slots[i][key]-=take;diff+=take}
+}
+function fromCT(x,fixOpen){
+  const num=v=>Number.isFinite(Number(v))?Number(v):0;
+  const A=Math.max(0,Math.round(num(x.approaches!==undefined?x.approaches:(x.approachTimestamps||[]).length)));
+  const V=Math.max(0,Math.round(num(x.sales!==undefined?x.sales:(x.saleTimestamps||[]).length)));
+  if(!A&&!V)return null;
+  const t0=Number(x.startTime),t1=Number(x.endTime),hasT=Number.isFinite(t0);
+  const loc=String(x.location||'').trim();
+  const slots=[],get=h=>{let z=slots.find(q=>q.h===h);if(!z){z={h:h,loc:loc,a:0,s:0};slots.push(z)}return z};
+  (x.approachTimestamps||[]).map(Number).filter(Number.isFinite).sort((a,b)=>a-b).forEach(t=>get(new Date(t).getHours()).a++);
+  (x.saleTimestamps||[]).map(Number).filter(Number.isFinite).sort((a,b)=>a-b).forEach(t=>get(new Date(t).getHours()).s++);
+  const h0=hasT?new Date(t0).getHours():12;
+  fitSlots(slots,'a',A,h0);fitSlots(slots,'s',V,h0);
+  const clean=slots.filter(z=>z.a||z.s);
+  let end=Number.isFinite(t1)?t1:null,adjusted=false;
+  const le=lastEvent(x);
+  if(fixOpen&&isOpenCT(x)){end=Math.max(le,hasT?t0:le);adjusted=true}
+  const out=hasT&&end!==null?Math.max(0,end-t0):0;
+  const work=Math.max(0,out-Math.max(0,num(x.pausedDuration)));
+  const date=/^\d{4}-\d{2}-\d{2}$/.test(x.date||'')?x.date:ymd(new Date(hasT?t0:Date.now()));
+  return{id:String(x.id||uid()),date:date,start:hasT?hm(new Date(t0)):'',end:end!==null?hm(new Date(end)):'',durMs:work,outMs:out,slots:clean,src:'converttrack',adj:adjusted?1:0};
+}
 $('#importFile').addEventListener('change',e=>{
   const f=e.target.files[0];if(!f)return;
   const r=new FileReader();
   r.onload=()=>{
     try{
       const d=JSON.parse(r.result);if(!d||!Array.isArray(d.sessions))throw 0;
-      const ids=new Set(S.sessions.map(x=>x.id));let n=0;
-      d.sessions.forEach(x=>{
-        if(x&&x.date&&Array.isArray(x.slots)&&!ids.has(x.id)){
-          x.id=x.id||uid();
-          x.slots=x.slots.map(s=>({h:+s.h||0,loc:s.loc||'',a:+s.a||0,s:+s.s||0}));
-          S.sessions.push(x);n++;
+      const ids=new Set(S.sessions.map(x=>x.id));
+      const fresh=d.sessions.filter(x=>x&&typeof x==='object'&&!(x.id&&ids.has(x.id)));
+      const skipped=d.sessions.length-fresh.length;
+      const openN=fresh.filter(x=>isCT(x)&&isOpenCT(x)).length;
+      let fix=false;
+      if(openN)fix=confirm(openN+' sessão(ões) parecem ter ficado com o timer ligado depois da última venda/abordagem (o fim registrado é mais de 1h30 depois).\n\nOK = encerrar essas sessões no último registro (tempos mais realistas).\nCancelar = manter os horários exatamente como estão no arquivo.');
+      let n=0,adj=0,last=null;
+      fresh.forEach(x=>{
+        let ns=null;
+        if(isCT(x))ns=fromCT(x,fix);
+        else if(x.date&&Array.isArray(x.slots)){
+          ns={id:String(x.id||uid()),date:x.date,start:x.start||'',end:x.end||'',durMs:+x.durMs||0,outMs:+x.outMs||0,
+            slots:x.slots.map(z=>({h:+z.h||0,loc:String(z.loc||'').trim(),a:+z.a||0,s:+z.s||0}))};
         }
+        if(!ns||ids.has(ns.id))return;
+        ids.add(ns.id);S.sessions.push(ns);n++;if(ns.adj)adj++;
+        if(!last||ns.date>last)last=ns.date;
       });
-      save();renderAll();toast(n+' sessões importadas');
+      if(last){const p=last.split('-');vy=+p[0];vm=+p[1]-1;selDay=null}
+      save();renderAll();
+      toast(n+' sessões importadas'+(skipped?' · '+skipped+' já existiam':'')+(adj?' · '+adj+' ajustadas':''));
     }catch(err){toast('Arquivo inválido')}
     e.target.value='';
   };
